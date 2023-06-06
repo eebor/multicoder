@@ -12,11 +12,11 @@ import (
 	"strings"
 )
 
-type toReaderFunc func(reflect.Value) io.Reader
+type toReaderFunc func(reflect.Value) (io.Reader, error)
 type encoderFunc func(reflect.Value, string) error
 
 func wrapError(err error) error {
-	return fmt.Errorf("multipartencoder: %s", err.Error())
+	return fmt.Errorf("multipartencoder: %w", err)
 }
 
 type Encoder struct {
@@ -32,6 +32,8 @@ func (e *Encoder) Encode(v any) error {
 	kind := val.Kind()
 
 	switch kind {
+	case reflect.Pointer:
+		return e.Encode(val.Elem())
 	case reflect.Struct:
 		return e.parseStruct(val)
 	case reflect.Map:
@@ -53,7 +55,7 @@ func (e *Encoder) parseStruct(val reflect.Value) error {
 		}
 
 		tag := fieldt.Tag.Get("multipart")
-		if tag == "" {
+		if tag == "" || tag == "-" {
 			continue
 		}
 
@@ -165,7 +167,12 @@ func (e *Encoder) encodeSingle(val reflect.Value, fieldname string) error {
 		return err
 	}
 
-	_, err = io.Copy(fw, torfunc(val))
+	r, err := torfunc(val)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(fw, r)
 
 	return err
 }
@@ -199,15 +206,18 @@ func getToReaderFunc(t reflect.Type) (toReaderFunc, error) {
 }
 
 func defaultToReader(format string) toReaderFunc {
-	return func(v reflect.Value) io.Reader {
-		return strings.NewReader(fmt.Sprintf(format, v.Interface()))
+	return func(v reflect.Value) (io.Reader, error) {
+		return strings.NewReader(fmt.Sprintf(format, v.Interface())), nil
 	}
 }
 
-func objectToReader(v reflect.Value) io.Reader {
+func objectToReader(v reflect.Value) (io.Reader, error) {
 	b := &bytes.Buffer{}
-	json.NewEncoder(b).Encode(v.Interface())
-	return b
+	err := json.NewEncoder(b).Encode(v.Interface())
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 func isFile(val reflect.Value) bool {
