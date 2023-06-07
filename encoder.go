@@ -16,7 +16,10 @@ type toReaderFunc func(reflect.Value) (io.Reader, error)
 type encoderFunc func(reflect.Value, string) error
 
 func wrapError(err error) error {
-	return fmt.Errorf("multipartencoder: %w", err)
+	if err != nil {
+		return fmt.Errorf("multipartencoder: %w", err)
+	}
+	return err
 }
 
 type Encoder struct {
@@ -29,18 +32,26 @@ func NewEncoder(w *multipart.Writer) *Encoder {
 
 func (e *Encoder) Encode(v any) error {
 	val := reflect.ValueOf(v)
-	kind := val.Kind()
 
-	switch kind {
-	case reflect.Pointer:
-		return e.Encode(val.Elem())
-	case reflect.Struct:
-		return e.parseStruct(val)
-	case reflect.Map:
-		return e.parseMap(val)
+	if !val.IsValid() {
+		return wrapError(errors.New("val is not valid"))
 	}
 
-	return errors.New("only map or struct can be encoded")
+	kind := val.Kind()
+
+	if kind == reflect.Pointer {
+		val = reflect.Indirect(val)
+		kind = val.Kind()
+	}
+
+	switch kind {
+	case reflect.Struct:
+		return wrapError(e.parseStruct(val))
+	case reflect.Map:
+		return wrapError(e.parseMap(val))
+	}
+
+	return wrapError(errors.New("only map or struct can be encoded"))
 }
 
 func (e *Encoder) parseStruct(val reflect.Value) error {
@@ -49,6 +60,10 @@ func (e *Encoder) parseStruct(val reflect.Value) error {
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
 		fieldt := typ.Field(i)
+
+		if !field.IsValid() {
+			continue
+		}
 
 		if !fieldt.IsExported() {
 			continue
@@ -70,10 +85,15 @@ func (e *Encoder) parseStruct(val reflect.Value) error {
 func (e *Encoder) parseMap(val reflect.Value) error {
 	for _, vkey := range val.MapKeys() {
 		if vkey.Kind() != reflect.String {
-			return wrapError(errors.New("only a string must be a key"))
+			return errors.New("only a string must be a key")
 		}
 		key := vkey.Interface().(string)
 
+		mval := val.MapIndex(vkey)
+
+		if !mval.IsValid() {
+			continue
+		}
 		if err := e.encodeField(val.MapIndex(vkey), key); err != nil {
 			return err
 		}
@@ -83,25 +103,32 @@ func (e *Encoder) parseMap(val reflect.Value) error {
 }
 
 func (e *Encoder) encodeField(val reflect.Value, fieldname string) error {
-	if k := val.Kind(); k == reflect.Interface || k == reflect.Pointer {
+	if k := val.Kind(); k == reflect.Pointer || k == reflect.Interface {
 		if val.IsNil() {
 			return nil
 		}
+
 		if k == reflect.Interface {
 			val = val.Elem()
 		}
 	}
 
-	return e.getEncoder(val)(val, fieldname)
+	if err := e.getEncoder(val)(val, fieldname); err != nil {
+		return fmt.Errorf("field \"%s\": %w", fieldname, err)
+	}
+	return nil
 }
 
 func (e *Encoder) getEncoder(val reflect.Value) encoderFunc {
 	kind := val.Kind()
 	if kind == reflect.Pointer {
-		e.getEncoder(val.Elem())
+		kind = reflect.Indirect(val).Kind()
 	}
 
 	if kind == reflect.Array || kind == reflect.Slice {
+		if k := deepTypeKind(val.Type()); k == reflect.Struct || k == reflect.Map {
+			return e.encodeSingle
+		}
 		return e.encodeArray
 	}
 
@@ -118,10 +145,14 @@ func (e *Encoder) encodeArray(val reflect.Value, fieldname string) error {
 		return nil
 	}
 
+	if val.Kind() == reflect.Pointer {
+		val = reflect.Indirect(val)
+	}
+
 	efunc := e.getEncoder(val.Index(0))
 
 	for i := 0; i < len; i++ {
-		err := efunc(val.Index(i), fmt.Sprintf("%s[%v]", fieldname, i))
+		err := efunc(val.Index(i), fmt.Sprintf("%s[]", fieldname))
 		if err != nil {
 			return err
 		}
@@ -133,13 +164,13 @@ func (e *Encoder) encodeArray(val reflect.Value, fieldname string) error {
 func (e *Encoder) encodeFile(val reflect.Value, fieldname string) error {
 	fs, err := fileStat(val)
 	if err != nil {
-		return wrapError(fmt.Errorf("file in \"%s\" is not available", val.Type().Name()))
+		return fmt.Errorf("file in \"%s\" is not available", val.Type().Name())
 	}
 
 	filename := fs.Name()
 
 	if fs.IsDir() {
-		return wrapError(fmt.Errorf("%s is dir", filename))
+		return fmt.Errorf("%s is dir", filename)
 	}
 
 	if fieldname == "" {
@@ -148,7 +179,7 @@ func (e *Encoder) encodeFile(val reflect.Value, fieldname string) error {
 
 	fw, err := e.w.CreateFormFile(fieldname, filename)
 	if err != nil {
-		return wrapError(err)
+		return err
 	}
 
 	_, err = io.Copy(fw, val.Interface().(io.Reader))
@@ -157,6 +188,10 @@ func (e *Encoder) encodeFile(val reflect.Value, fieldname string) error {
 }
 
 func (e *Encoder) encodeSingle(val reflect.Value, fieldname string) error {
+	if val.Kind() == reflect.Pointer {
+		val = reflect.Indirect(val)
+	}
+
 	torfunc, err := getToReaderFunc(val.Type())
 	if err != nil {
 		return err
@@ -180,11 +215,8 @@ func (e *Encoder) encodeSingle(val reflect.Value, fieldname string) error {
 func getToReaderFunc(t reflect.Type) (toReaderFunc, error) {
 	kind := t.Kind()
 
-	if kind == reflect.Pointer {
-		return getToReaderFunc(t.Elem())
-	}
-
-	switch kind {
+	//TODO: add bytes
+	switch t.Kind() {
 	case reflect.Float32,
 		reflect.Float64:
 		return defaultToReader("%f"), nil
@@ -195,14 +227,20 @@ func getToReaderFunc(t reflect.Type) (toReaderFunc, error) {
 		reflect.Int64, reflect.Uint64:
 		return defaultToReader("%v"), nil
 	case reflect.Bool:
-		return defaultToReader("%b"), nil
+		return defaultToReader("%t"), nil
 	case reflect.String:
 		return defaultToReader("%s"), nil
 	case reflect.Map, reflect.Struct:
 		return objectToReader, nil
+	case reflect.Array, reflect.Slice:
+		k := deepTypeKind(t)
+		if k == reflect.Map || k == reflect.Struct {
+			return objectToReader, nil
+		}
+		return nil, fmt.Errorf("array of %s is not supported type for reader", k.String())
 	}
 
-	return nil, wrapError(fmt.Errorf("%s is not supported type", kind.String()))
+	return nil, fmt.Errorf("%s is not supported type for reader", kind.String())
 }
 
 func defaultToReader(format string) toReaderFunc {
@@ -213,11 +251,23 @@ func defaultToReader(format string) toReaderFunc {
 
 func objectToReader(v reflect.Value) (io.Reader, error) {
 	b := &bytes.Buffer{}
-	err := json.NewEncoder(b).Encode(v.Interface())
+	data, err := json.Marshal(v.Interface())
 	if err != nil {
 		return nil, err
 	}
+	b.Write(data)
+
 	return b, nil
+}
+
+func deepTypeKind(arr reflect.Type) reflect.Kind {
+	k := arr.Kind()
+
+	if k == reflect.Array || k == reflect.Pointer || k == reflect.Slice {
+		return deepTypeKind(arr.Elem())
+	}
+
+	return arr.Kind()
 }
 
 func isFile(val reflect.Value) bool {
