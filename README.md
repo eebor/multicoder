@@ -130,8 +130,6 @@ Only accepts map and struct types
 
 Used to convert any type to multipart/form-data field
 
-Accepts any type
-
 Takes the name of the field as the second argument 
 
 Declaration:
@@ -148,6 +146,7 @@ err := e.EncodeField(v, "field_name")
 
 Returns an error in case of failure
 
+Accepts any type
 ## TODO
 
 - Add support for io.Reader
