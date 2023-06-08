@@ -331,7 +331,7 @@ func TestEncodeField(t *testing.T) {
 
 	b := &bytes.Buffer{}
 	mw := multipart.NewWriter(b)
-	err = NewEncoder(mw).EnecodeField(f, "test_file")
+	err = NewEncoder(mw).EncodeField(f, "test_file")
 	mw.Close()
 	if err != nil {
 		log.Fatal(err)

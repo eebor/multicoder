@@ -75,7 +75,7 @@ func (e *Encoder) Encode(v any) error {
 // struct and map will be written as a field with json
 //
 // Returns an error if unsuccessful
-func (e *Encoder) EnecodeField(v any, fieldname string) error {
+func (e *Encoder) EncodeField(v any, fieldname string) error {
 	val := reflect.ValueOf(v)
 
 	if !val.IsValid() {
