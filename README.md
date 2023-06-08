@@ -1,9 +1,7 @@
 # Multipart Encoder for Golang
 
-The library allows you to encode different types in mutlipart/form-data 
+The library lets you convert different types to mutlipart/form-data
 ## Install
-
-Install multicoder with go get
 
 ```bash
   go get -u github.com/eebor/multicoder
@@ -80,7 +78,7 @@ Supported types
 
 | Type  | Content |
 | ------------- | ------------- |
-| int, uint, string, float, string, bool | form-data (string)  |
+| int, uint, string, float, bool | form-data (string)  |
 | map, struct, map[], struct[]  | form-data (json)  |
 | *File  | application/octet-stream (string)  |
 | io.Reader | Not yet supported (TODO)  |
@@ -103,15 +101,15 @@ type MyFavStruct struct {
 
 The tag value is used for the field name
 
-The "-" tag is not taken into account when parsing
+"-" is ignored when parsing
 
 ### Encode 
 
-Used to encode structures and maps in mutlipart/form-data 
+Used to convert struct and maps to mutlipart/form-data 
 
-Structures encode all fields with multipart tag
+In struct, all fields with a multipart tag are encoded
 
-In map, all fields are encoded
+In map, all keys are encoded
 
 Declaration:
 ```go
@@ -127,12 +125,14 @@ err := e.Encode(v)
 
 Returns an error in case of failure
 
-Does not accept any types other than map and struct
+Only accepts map and struct types
 ### EncodeField
 
-Used to encode fields separately from the structure or map
+Used to convert any type to multipart/form-data field
 
-Accepts any type, takes the name of the field as the second argument 
+Accepts any type
+
+Takes the name of the field as the second argument 
 
 Declaration:
 ```go
