@@ -54,6 +54,16 @@ func (e *Encoder) Encode(v any) error {
 	return wrapError(errors.New("only map or struct can be encoded"))
 }
 
+func (e *Encoder) EnecodeField(v any, fieldname string) error {
+	val := reflect.ValueOf(v)
+
+	if !val.IsValid() {
+		return wrapError(errors.New("val is not valid"))
+	}
+
+	return wrapError(e.encodeField(val, fieldname))
+}
+
 func (e *Encoder) parseStruct(val reflect.Value) error {
 	typ := val.Type()
 

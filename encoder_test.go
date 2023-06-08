@@ -230,11 +230,7 @@ type testStruct struct {
 	iPrivate          int `multipart:"private"`
 }
 
-func TestEncodeStruct(t *testing.T) {
-	f, err := os.Open("./test/file1")
-	if err != nil {
-		log.Fatal(err)
-	}
+func TestEncode(t *testing.T) {
 
 	ptrStr := testStringVal
 	ptrFlt := testFloatVal
@@ -243,6 +239,12 @@ func TestEncodeStruct(t *testing.T) {
 	testMap := map[string]any{"t1": "t1", "t2": "t2"}
 
 	t.Run("test_encodeStruct", func(t *testing.T) {
+		f, err := os.Open("./test/file1")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
 		tstruct := &testStruct{
 			Inter:             &testFieldStruct{testStringVal},
 			FieldStruct:       testFieldStruct{testStringVal},
@@ -281,6 +283,12 @@ func TestEncodeStruct(t *testing.T) {
 		}
 	})
 	t.Run("test_encodeMap", func(t *testing.T) {
+		f, err := os.Open("./test/file1")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
 		tmap := &map[string]any{
 			"FieldStruct":    testFieldStruct{testStringVal},
 			"PtrFieldStruct": &testFieldStruct{testStringVal},
@@ -312,4 +320,34 @@ func TestEncodeStruct(t *testing.T) {
 			log.Fatal("wrong number of fields written")
 		}
 	})
+}
+
+func TestEncodeField(t *testing.T) {
+	f, err := os.Open("./test/file1")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	b := &bytes.Buffer{}
+	mw := multipart.NewWriter(b)
+	err = NewEncoder(mw).EnecodeField(f, "test_file")
+	mw.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	form, err := multipart.NewReader(b, mw.Boundary()).ReadForm(maxBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stat, err := f.Stat()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if stat.Size() != form.File["test_file"][0].Size {
+		t.Fatal("test file val and form file do not match")
+	}
 }
