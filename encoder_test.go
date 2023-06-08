@@ -1,4 +1,4 @@
-package mulipartencoder
+package multicoder
 
 import (
 	"bytes"

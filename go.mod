@@ -1,3 +1,3 @@
-module multipartencoder
+module multicoder
 
 go 1.20

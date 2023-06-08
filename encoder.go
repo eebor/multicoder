@@ -2,7 +2,7 @@
 // map and single data into multipart/form-data content.
 //
 // The byte array should be implemented through the file
-package mulipartencoder
+package multicoder
 
 import (
 	"bytes"
