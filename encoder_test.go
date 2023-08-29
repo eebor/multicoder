@@ -36,7 +36,7 @@ func TestReaderFuncs(t *testing.T) {
 		return func(t *testing.T) {
 			val := reflect.ValueOf(data)
 			byteeq := []byte(equaldata)
-			torfunc, err := getToReaderFunc(val.Type())
+			torfunc, err := getToReaderFunc(val)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -79,7 +79,7 @@ func TestReaderFuncs(t *testing.T) {
 	t.Run("test_map", gentestfunc(tmap, string(eqtmap)))
 
 	t.Run("test_unsupported", func(t *testing.T) {
-		val := reflect.TypeOf([]int{96})
+		val := reflect.ValueOf([]int{96})
 		_, err := getToReaderFunc(val)
 		if err == nil {
 			t.Fatal("unsupported not detected")
@@ -203,6 +203,7 @@ func TestEncodings(t *testing.T) {
 }
 
 type myInt int
+type myString string
 
 type testStruct struct {
 	EmptyInter        testInterface      `multipart:"empty_interface"`
@@ -225,9 +226,10 @@ type testStruct struct {
 	PtrBoolean        *bool              `multipart:"ptr_bool"`
 	MyInt             myInt              `multipart:"my_int"`
 	NilPtr            *struct{}          `mulripart:"nil_ptr"`
+	iPrivate          int                `multipart:"private"`
+	AnyArray          []any              `multipart:"any_array"`
 	IgnoreMe          int                `multipart:"-"`
 	IgnoreMeToo       int
-	iPrivate          int `multipart:"private"`
 }
 
 func TestEncode(t *testing.T) {
@@ -263,6 +265,7 @@ func TestEncode(t *testing.T) {
 			Boolean:           testBoolVal,
 			PtrBoolean:        &ptrBool,
 			iPrivate:          0,
+			AnyArray:          []any{myInt(testIntVal), myString(testStringVal)},
 		}
 
 		b := &bytes.Buffer{}
@@ -278,7 +281,7 @@ func TestEncode(t *testing.T) {
 			log.Fatal(err)
 		}
 
-		if len(form.Value) != 16 && len(form.File) != 1 {
+		if len(form.Value) != 17 && len(form.File) != 1 {
 			log.Fatal("wrong number of fields written")
 		}
 	})

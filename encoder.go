@@ -26,7 +26,7 @@ type encoderFunc func(reflect.Value, string) error
 
 func wrapError(err error) error {
 	if err != nil {
-		return fmt.Errorf("multipartencoder: %w", err)
+		return fmt.Errorf("multicoder: %w", err)
 	}
 	return err
 }
@@ -196,9 +196,8 @@ func (e *Encoder) encodeArray(val reflect.Value, fieldname string) error {
 		val = reflect.Indirect(val)
 	}
 
-	efunc := e.getEncoder(val.Index(0))
-
 	for i := 0; i < len; i++ {
+		efunc := e.getEncoder(val.Index(i))
 		err := efunc(val.Index(i), fmt.Sprintf("%s[]", fieldname))
 		if err != nil {
 			return err
@@ -237,11 +236,15 @@ func (e *Encoder) encodeFile(val reflect.Value, fieldname string) error {
 
 // Encodes primitive values, structures, map, and struct or map arrays into multipart/form-data field
 func (e *Encoder) encodeSingle(val reflect.Value, fieldname string) error {
-	if val.Kind() == reflect.Pointer {
-		val = reflect.Indirect(val)
+	if k := val.Kind(); k == reflect.Pointer || k == reflect.Interface {
+		if k == reflect.Interface {
+			val = val.Elem()
+		} else {
+			val = reflect.Indirect(val)
+		}
 	}
 
-	torfunc, err := getToReaderFunc(val.Type())
+	torfunc, err := getToReaderFunc(val)
 	if err != nil {
 		return err
 	}
@@ -264,7 +267,7 @@ func (e *Encoder) encodeSingle(val reflect.Value, fieldname string) error {
 // Picks up the desired toReaderFunc function for the value.
 //
 // Cannot accept pointer or interface
-func getToReaderFunc(t reflect.Type) (toReaderFunc, error) {
+func getToReaderFunc(t reflect.Value) (toReaderFunc, error) {
 	kind := t.Kind()
 
 	//TODO: add bytes
@@ -285,7 +288,7 @@ func getToReaderFunc(t reflect.Type) (toReaderFunc, error) {
 	case reflect.Map, reflect.Struct:
 		return objectToReader, nil
 	case reflect.Array, reflect.Slice:
-		k := deepTypeKind(t)
+		k := deepTypeKind(t.Type())
 		if k == reflect.Map || k == reflect.Struct {
 			return objectToReader, nil
 		}
